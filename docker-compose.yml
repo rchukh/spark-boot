@@ -1,0 +1,7 @@
+version: '2'
+services:
+  api:
+    image: sparkboot/api
+    ports:
+      - "9090:9090"
+      - "4040:4040"
