@@ -1,0 +1,75 @@
+buildscript {
+    repositories {
+        jcenter()
+        mavenLocal()
+        mavenCentral()
+    }
+    dependencies {
+        // NOTE: This effectively  creates misleading information from "dependencies" gradle task
+        // As it overrides the versions in "dependencies" output, but does not override dependencies in the final build.
+        classpath("org.springframework.boot:spring-boot-gradle-plugin:${springBootVersion}")
+    }
+}
+
+apply plugin: 'spring-boot'
+
+jar {
+    baseName = "api"
+}
+
+bootRun {
+    // Optionally preserve FramePointer for proper FlameGraph generation
+    if (project.hasProperty('flames')) {
+        jvmArgs = ["-XX:+PreserveFramePointer"]
+    }
+}
+
+dependencies {
+    compile project(':spark-driver')
+
+    // FIX for Spark Jackson version
+    compile("com.fasterxml.jackson.core:jackson-core:$sparkJacksonVersion")
+    compile("com.fasterxml.jackson.core:jackson-databind:$sparkJacksonVersion")
+
+    compile("org.springframework.boot:spring-boot-starter-web:${springBootVersion}") {
+        exclude module: 'spring-boot-starter-tomcat'
+        exclude module: 'spring-boot-starter-logging'
+        exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'
+        exclude group: 'com.fasterxml.jackson.core', module: 'jackson-databind'
+    }
+    compile("org.springframework.boot:spring-boot-starter-jetty:${springBootVersion}") {
+        exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'
+        exclude group: 'com.fasterxml.jackson.core', module: 'jackson-databind'
+    }
+    compile("org.springframework.boot:spring-boot-starter-actuator:${springBootVersion}") {
+        exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'
+        exclude group: 'com.fasterxml.jackson.core', module: 'jackson-databind'
+    }
+
+    runtime("org.postgresql:postgresql:${postgresqlJdbcVersion}")
+
+    compile("org.slf4j:slf4j-api:$slf4jVersion")
+    compile("ch.qos.logback:logback-classic:$logbackVersion")
+}
+
+task buildDocker(type: Exec, dependsOn: build) {
+    // Build Application
+    dependsOn jar
+    // Prepare data for packaging into container
+    doFirst {
+        copy {
+            // Copy application
+            from jar
+            into project.file('build/docker')
+        }
+        copy {
+            // Copy static docker context
+            from project.file('docker')
+            into project.file('build/docker')
+        }
+    }
+
+    executable "sh"
+    // Jenkins will push it separately (e.g. to Google Container Registry)
+    args "-c", "docker build -t " + project.parent.name + "/" + project.name + ":latest build/docker"
+}
